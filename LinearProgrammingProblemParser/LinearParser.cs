@@ -1,20 +1,25 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.IO;
 
 namespace LinearProgrammingProblemParser
 {
 	class LinearParser
 	{
 		private string[] fileLines;
-		List<TechnologyLimitation> technologyLimitations;
-		List<string> equationCoefficients = new List<string>();
-		private string typeOfProblem;
+		private string minMax;
+		private string errorMsg;
+		private List<List<string>> technologyLimitations = new List<List<string>>();
+		private List<string> technologyLimitationsSigns = new List<string>();
+		private List<string> technologyLimitationsValues = new List<string>();
+		private List<string> equationCoefficients = new List<string>();
 
-		string equationPattern = @"([\+\-*/])*\s*(\d\d*)*\w(\d\d*)[^\s]*";
+
+		string equationPattern = @"([\+\-*/])*\s*\s*(\d\d*)*\w(\d\d*)[^\s]*";
 		string minOrMaxPattern = @"(min|max)";
 		string subjectToPattern = @"(s.t.|st|subject to)";
-		string limitationsPattern = @"([<=>]+)\s*(\d)";
+		string limitationsPattern = @"([<=>]+)\s*([\-\+]*\d)";
 
 
 		public LinearParser(string pathToFile)
@@ -24,101 +29,144 @@ namespace LinearProgrammingProblemParser
 
 		public void ParseFile()
 		{
+			if (SubjectToAndMinOrMaxExist())
+			{
+				ParseFileByLine(0);
+				if (errorMsg == null)
+				{
+					Console.WriteLine("Technology Limitations: ");
+					technologyLimitations.ForEach((List<string> coefficientList) =>
+					{
+						Console.WriteLine(String.Join(", ", coefficientList.ToArray()));
+					});
+					Console.WriteLine($"MinMax: {minMax}");
+					Console.WriteLine("EquationCoefficients");
+					Console.WriteLine(String.Join(", ", equationCoefficients.ToArray()));
+				}
+				else
+					Console.WriteLine(errorMsg);
 
-			
+			}
+			else
+			{
+				Console.WriteLine("You haven't entered minmax value or subject to keyword");
+				return;
+			}
 		}
 
-		private bool CheckForNoneExistantVariable(string groupValue, int counter)
+		/*
+		 * Group 0 is the whole match. Group 1 is the sign, Group 2 is for the coefficient and Group 3 is for the index
+		 */
+
+		private void ParseFileByLine(int fileIndex)
 		{
-			int variableIndex;
-			Int32.TryParse(groupValue, out variableIndex);
-			if (variableIndex == counter + 1)
-				return false;
-			else
-				return true;
+			int matchIndex;
+
+			//Console.WriteLine($"File index : {fileIndex}");
+			//Console.WriteLine($"File length : {fileLines.Length}");
+			var equationCoefficientMatch = Regex.Match(fileLines[fileIndex], equationPattern);
+			var limitationCoeffiecientsLine = new List<string>();
+			var matchCount = 0;
+			var usedCoefficientCount = 0;
+
+			while (equationCoefficientMatch.Success)
+			{
+				var equationCoefficient = "";
+
+				int.TryParse(equationCoefficientMatch.Groups[3].ToString(), out matchIndex);
+
+
+				while (matchCount != matchIndex - 1)
+				{
+					if (fileIndex == 0)
+						equationCoefficients.Add("+0");
+					else
+						limitationCoeffiecientsLine.Add("+0");
+					matchCount++;
+				}
+
+
+				for (int i = 1; i < 4; i++)
+				{
+					var selectedGroup = equationCoefficientMatch.Groups[i].ToString();
+					if (i == 1)
+					{
+						if (string.IsNullOrEmpty(selectedGroup))
+						{
+							if (usedCoefficientCount == 0)
+								equationCoefficient += "+";
+							else
+							{
+								errorMsg = $"Missing a sign at line {fileIndex}";
+								return;
+							}
+						}
+						else
+							equationCoefficient += selectedGroup;
+					}
+
+					if (i == 2)
+						equationCoefficient += string.IsNullOrEmpty(selectedGroup) ? "1" : selectedGroup;
+
+				}
+				if (fileIndex == 0)
+					equationCoefficients.Add(equationCoefficient);
+				else
+					limitationCoeffiecientsLine.Add(equationCoefficient);
+
+				equationCoefficientMatch = equationCoefficientMatch.NextMatch();
+				matchCount++;
+				usedCoefficientCount++;
+			}
+
+			if (fileIndex > 0)
+			{
+				var technologyLimitationsMatch = Regex.Match(fileLines[fileIndex], limitationsPattern);
+
+				var currentLimitationSign = technologyLimitationsMatch.Groups[1].ToString();
+				if (string.IsNullOrEmpty(currentLimitationSign))
+				{
+					errorMsg = $"Missing less-equal-more than sign in line {fileIndex}";
+					return;
+				}
+				else
+				{
+					if (currentLimitationSign == "<=" || currentLimitationSign == "=<")
+						technologyLimitationsSigns.Add("-1");
+					else if (currentLimitationSign == "=")
+						technologyLimitationsSigns.Add("0");
+					else if (currentLimitationSign == ">=" || currentLimitationSign == "=>")
+						technologyLimitationsSigns.Add("1");
+				}
+
+				var currentLimitationValue = technologyLimitationsMatch.Groups[2].ToString();
+
+				if (string.IsNullOrEmpty(currentLimitationValue))
+				{
+					errorMsg = $"Missing limitation value in line {fileIndex}";
+					return;
+				}
+				else
+					technologyLimitationsValues.Add(currentLimitationValue);
+			}
+
+			technologyLimitations.Add(limitationCoeffiecientsLine);
+			if (fileIndex < fileLines.Length - 2)
+				ParseFileByLine(fileIndex + 1);
+
 		}
 
 		private bool SubjectToAndMinOrMaxExist()
 		{
-			var parseFlag = true;
+			var minMaxRegex = new Regex(minOrMaxPattern);
+			var subjectToRegex = new Regex(subjectToPattern);
 
-			Match minOrMaxMatch = Regex.Match(fileLines[0], minOrMaxPattern);
-			var minOrMax = minOrMaxMatch.Groups[0].ToString();
+			if (!(minMaxRegex.IsMatch(fileLines[0]) && subjectToRegex.IsMatch(fileLines[1])))
+				return false;
 
-			Match subjectToMatch = Regex.Match(fileLines[1], subjectToPattern);
-			var subjectTo = subjectToMatch.Groups[0].ToString();
-
-			if (string.IsNullOrEmpty(minOrMax) || string.IsNullOrEmpty(subjectTo))
-				parseFlag = false;
-			else
-				typeOfProblem = minOrMax;
-
-
-
-			return parseFlag;
-		}
-
-		private List<string> GetEquationCoefficients(int fileIndex)
-		{
-			var coefficients = new List<string>();
-			var matchCount = 0;
-			var equationMatch = Regex.Match(fileLines[fileIndex], equationPattern);
-			while (equationMatch.Success)
-			{
-				string sign = "";
-				string coefficient = "";
-				string joinedCoefficient = "";
-
-				var groups = equationMatch.Groups;
-				for (var i = 1; i < groups.Count; i++)
-				{
-					string groupValue = groups[i].ToString();
-					if (fileIndex != 0)
-					{
-						if (CheckForNoneExistantVariable(groupValue, matchCount))
-						{
-							int counter = matchCount;
-							int valueToReach;
-							Int32.TryParse(groupValue, out valueToReach);
-							while (true)
-							{
-								if(counter != valueToReach)
-								{
-									coefficients.Add("+0");
-								}
-							}
-						}
-					}
-					if (i == 1)
-					{
-						if (string.IsNullOrWhiteSpace(groupValue))
-						{
-							if (matchCount == 0)
-								sign = "+";
-							else
-							{
-								Console.WriteLine($"Variable {matchCount + 1} from equation doensn't have a sign");
-								throw new Exception();
-							}
-						}
-						else
-							sign = groupValue;
-					}
-					if (i == 2)
-					{
-						if (string.IsNullOrWhiteSpace(groupValue))
-							coefficient = "1";
-						else
-							coefficient = groupValue;
-					}
-				}
-
-				joinedCoefficient = String.Concat(sign, coefficient);
-				coefficients.Add(joinedCoefficient);
-				equationMatch = equationMatch.NextMatch();
-				matchCount++;
-			}
-			return coefficients;
+			var minMaxMatch = minMaxRegex.Match(fileLines[0]);
+			minMax = minMaxMatch.Groups[0].ToString() == "min" ? "-1" : "1";
+			return true;
 		}
 	}
 }
