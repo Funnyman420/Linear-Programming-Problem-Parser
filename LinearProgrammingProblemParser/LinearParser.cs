@@ -2,8 +2,7 @@
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.IO;
-
-namespace LinearProgrammingProblemParser
+namespace LinearProgrammingParser
 {
 	class LinearParser
 	{
@@ -70,39 +69,35 @@ namespace LinearProgrammingProblemParser
 					matchCount++;
 				}
 
+				var matchedSign = equationCoefficientMatch.Groups[1].ToString();
+				var matchedCoefficient = equationCoefficientMatch.Groups[2].ToString();
 
-				for (int i = 1; i < 4; i++)
+				/* 
+				 * Checks if the sign is empty. If it is then it checks if it is in the first variable of the
+				 * equation. If the statement is true it assigns the + sign. If it's not then the program terminates
+				 * displaying the correspondent message.
+				 */
+				if (string.IsNullOrEmpty(matchedSign))
 				{
-					var selectedGroup = equationCoefficientMatch.Groups[i].ToString();
-					if (i == 1)
+					if (usedCoefficientCount == 0)
+						equationCoefficient += "+";
+					else
 					{
-						/* 
-						 * Checks if the sign is empty. If it is then it checks if it is in the first variable of the
-						 * equation. If the statement is true it assigns the + sign. If it's not then the program terminates
-						 * displaying the correspondent message.
-						 */
-						if (string.IsNullOrEmpty(selectedGroup))
-						{
-							if (usedCoefficientCount == 0)
-								equationCoefficient += "+";
-							else
-							{
-								errorMsg = $"Missing a sign at line {fileIndex}";
-								return;
-							}
-						}
-						else
-							equationCoefficient += selectedGroup;
+						errorMsg = $"Missing a sign at line {fileIndex}";
+						return;
 					}
-
-					if (i == 2)
-						equationCoefficient += string.IsNullOrEmpty(selectedGroup) ? "1" : selectedGroup;
-
 				}
+				else
+					equationCoefficient += matchedSign;
+
+
+				equationCoefficient += string.IsNullOrEmpty(matchedCoefficient) ? "1" : matchedCoefficient;
+
 				/* 
 				 * If we are in the first line of the equation then we append it to the minmax equation coeffiecients.
 				 * If not, to the technology limitations coefficients.
 				 */
+
 				if (fileIndex == 0)
 					equationCoefficients.Add(equationCoefficient);
 				else
@@ -112,16 +107,19 @@ namespace LinearProgrammingProblemParser
 				matchCount++;
 				usedCoefficientCount++;
 			}
+
 			//If the fileIndex is greater than 0 then we are in the technology limitations section
 			if (fileIndex > 0)
 			{
 				var technologyLimitationsMatch = Regex.Match(fileLines[fileIndex], limitationsPattern);
 
 				var currentLimitationSign = technologyLimitationsMatch.Groups[1].ToString();
+
 				/*
 				 * Tests if the less-equal-more than sing exists and if it does it gives the currentLimitationSign 
 				 * the right value. -1 for less than, 0 for equal and +1 for more-than
 				 */
+
 				if (string.IsNullOrEmpty(currentLimitationSign))
 				{
 					errorMsg = $"Missing less-equal-more than sign in line {fileIndex + 1}";
@@ -138,10 +136,12 @@ namespace LinearProgrammingProblemParser
 				}
 
 				var currentLimitationValue = technologyLimitationsMatch.Groups[2].ToString();
+
 				/*
 				 * Checks if the value of the inequation is null and if the statement is true then the program terminates.
 				 * If not it checks if it has a sign in front of it. If it hasn't it assigns it the + sign.
 				 */
+
 				if (string.IsNullOrEmpty(currentLimitationValue))
 				{
 					errorMsg = $"Missing limitation value in line {fileIndex + 1}";
@@ -149,11 +149,10 @@ namespace LinearProgrammingProblemParser
 				}
 				else
 					technologyLimitationsValues.Add(!(currentLimitationValue[0].Equals("+") || currentLimitationValue[0].Equals("-")) ?
-						$"+{currentLimitationValue}" : 
-						currentLimitationValue);
-			}
-			if(fileIndex > 0)
+						$"+{currentLimitationValue}" : currentLimitationValue);
+
 				technologyLimitations.Add(limitationCoeffiecientsLine);
+			}
 
 			if (fileIndex < fileLines.Length - 2)
 				ParseFileByLine(fileIndex + 1);
@@ -163,6 +162,7 @@ namespace LinearProgrammingProblemParser
 		 * Tests if there is any minmax value in the first line and s.t or st or subject to in the second line. If both of them exist then 
 		 * it saves the value of minmax value as -1 for min and 1 for max
 		 */
+
 		private bool SubjectToAndMinOrMaxExist()
 		{
 			var minMaxRegex = new Regex(minOrMaxPattern);
@@ -179,10 +179,10 @@ namespace LinearProgrammingProblemParser
 		//Writes to file.
 		private void MakeTxtFile()
 		{
-			
+
 			using (var streamWriter = new StreamWriter(@"../../LP-02.txt"))
 			{
-				if(errorMsg != null)
+				if (errorMsg != null)
 				{
 					streamWriter.WriteLine(errorMsg);
 					return;
@@ -191,7 +191,7 @@ namespace LinearProgrammingProblemParser
 				streamWriter.WriteLine($"MinMax = {minMax}, [{String.Join(", ", equationCoefficients)}] * x");
 				for (int i = 0; i < technologyLimitations.Count; i++)
 				{
-					
+
 					string line = $"{(i == 0 ? "s.t. " : new string(' ', 5))}[{String.Join(", ", technologyLimitations[i])}]" +
 						$"{(i == technologyLimitations.Count / 2 ? " * x " : new string(' ', 5))}" +
 						$"[Equin({i}) = {technologyLimitationsSigns[i]}] [{technologyLimitationsValues[i]}]";
